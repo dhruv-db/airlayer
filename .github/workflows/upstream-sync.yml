@@ -1,0 +1,25 @@
+name: upstream-sync
+on:
+  schedule: [{cron: "0 5 * * 1"}]
+  workflow_dispatch: {}
+permissions: {contents: write, pull-requests: write}
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: databridge, fetch-depth: 0}
+      - run: |
+          git config user.name "upstream-sync" && git config user.email "upstream-sync@users.noreply.github.com"
+          git remote add upstream https://github.com/oxy-hq/airlayer.git
+          git fetch upstream main
+          git checkout -B upstream-sync
+          git merge --no-edit upstream/main
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --quiet
+      - run: |
+          git push -f origin upstream-sync
+          gh pr list --head upstream-sync --state open --json number -q '.[0].number' | grep -q . || \
+            gh pr create --base databridge --head upstream-sync --title "Merge upstream airlayer" \
+              --body "Weekly upstream merge. cargo test passed. Review the upstream changelog before merging."
+        env: {GH_TOKEN: "${{ github.token }}"}
